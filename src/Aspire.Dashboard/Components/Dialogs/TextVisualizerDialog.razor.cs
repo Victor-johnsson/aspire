@@ -2,7 +2,9 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 
 using System.Text;
+using System.Text.Encodings.Web;
 using System.Text.Json;
+using System.Text.Unicode;
 using System.Xml;
 using System.Xml.Linq;
 using Aspire.Dashboard.Model;
@@ -66,7 +68,9 @@ public partial class TextVisualizerDialog : ComponentBase, IAsyncDisposable
 
         // We need to make users perform an explicit action once before being able to see secret values
         // We do this by making them agree to a warning in the text visualizer dialog.
-        var settingsResult = await LocalStorage.GetUnprotectedAsync<TextVisualizerDialogSettings>(BrowserStorageKeys.TextVisualizerDialogSettings);
+        var settingsResult = await LocalStorage.GetUnprotectedAsync<TextVisualizerDialogSettings>(
+            BrowserStorageKeys.TextVisualizerDialogSettings
+        );
         ShowSecretsWarning = settingsResult.Value is not { SecretsWarningAcknowledged: true };
     }
 
@@ -74,7 +78,10 @@ public partial class TextVisualizerDialog : ComponentBase, IAsyncDisposable
     {
         if (firstRender)
         {
-            _jsModule = await JS.InvokeAsync<IJSObjectReference>("import", "/Components/Dialogs/TextVisualizerDialog.razor.js");
+            _jsModule = await JS.InvokeAsync<IJSObjectReference>(
+                "import",
+                "/Components/Dialogs/TextVisualizerDialog.razor.js"
+            );
         }
 
         if (_jsModule is not null && IsTextContentDisplayed)
@@ -95,10 +102,23 @@ public partial class TextVisualizerDialog : ComponentBase, IAsyncDisposable
         EnabledOptions.Clear();
         EnabledOptions.Add(PlaintextFormat);
 
-        _options = [
-            new SelectViewModel<string> { Id = PlaintextFormat, Name = Loc[nameof(Resources.Dialogs.TextVisualizerDialogPlaintextFormat)] },
-            new SelectViewModel<string> { Id = JsonFormat, Name = Loc[nameof(Resources.Dialogs.TextVisualizerDialogJsonFormat)] },
-            new SelectViewModel<string> { Id = XmlFormat, Name = Loc[nameof(Resources.Dialogs.TextVisualizerDialogXmlFormat)] }
+        _options =
+        [
+            new SelectViewModel<string>
+            {
+                Id = PlaintextFormat,
+                Name = Loc[nameof(Resources.Dialogs.TextVisualizerDialogPlaintextFormat)],
+            },
+            new SelectViewModel<string>
+            {
+                Id = JsonFormat,
+                Name = Loc[nameof(Resources.Dialogs.TextVisualizerDialogJsonFormat)],
+            },
+            new SelectViewModel<string>
+            {
+                Id = XmlFormat,
+                Name = Loc[nameof(Resources.Dialogs.TextVisualizerDialogXmlFormat)],
+            },
         ];
 
         if (TryFormatJson())
@@ -128,7 +148,11 @@ public partial class TextVisualizerDialog : ComponentBase, IAsyncDisposable
     {
         var lines = FormattedText.Split(["\r\n", "\r", "\n"], StringSplitOptions.None).ToList();
 
-        return lines.Select((line, index) => new StringLogLine(index + 1, line, FormatKind != PlaintextFormat)).ToList();
+        return lines
+            .Select(
+                (line, index) => new StringLogLine(index + 1, line, FormatKind != PlaintextFormat)
+            )
+            .ToList();
     }
 
     private bool TryFormatXml()
@@ -161,7 +185,8 @@ public partial class TextVisualizerDialog : ComponentBase, IAsyncDisposable
         }
     }
 
-    private void OnFormatOptionChanged(MenuChangeEventArgs args) => ChangeFormat(args.Id, args.Value);
+    private void OnFormatOptionChanged(MenuChangeEventArgs args) =>
+        ChangeFormat(args.Id, args.Value);
 
     public void ChangeFormat(string? newFormat, string? value)
     {
@@ -192,19 +217,32 @@ public partial class TextVisualizerDialog : ComponentBase, IAsyncDisposable
         var jsonData = Encoding.UTF8.GetBytes(jsonString);
 
         // Initialize the Utf8JsonReader
-        var reader = new Utf8JsonReader(jsonData, new JsonReaderOptions
-        {
-            AllowTrailingCommas = true,
-            CommentHandling = JsonCommentHandling.Allow,
-            // Increase the allowed limit to 1000. This matches the allowed limit of the writer.
-            // It's ok to allow recursion here because JSON is read in a flat loop. There isn't a danger
-            // of recursive method calls that cause a stack overflow.
-            MaxDepth = 1000
-        });
+        var reader = new Utf8JsonReader(
+            jsonData,
+            new JsonReaderOptions
+            {
+                AllowTrailingCommas = true,
+                CommentHandling = JsonCommentHandling.Allow,
+                // Increase the allowed limit to 1000. This matches the allowed limit of the writer.
+                // It's ok to allow recursion here because JSON is read in a flat loop. There isn't a danger
+                // of recursive method calls that cause a stack overflow.
+                MaxDepth = 1000,
+            }
+        );
 
         // Use a MemoryStream and Utf8JsonWriter to write the formatted JSON
         using var stream = new MemoryStream();
-        using var writer = new Utf8JsonWriter(stream, new JsonWriterOptions { Indented = true });
+        using var writer = new Utf8JsonWriter(
+            stream,
+            new JsonWriterOptions
+            {
+                Indented = true,
+                Encoder = JavaScriptEncoder.Create(
+                    UnicodeRanges.BasicLatin,
+                    UnicodeRanges.Latin1Supplement
+                ),
+            }
+        );
 
         while (reader.Read())
         {
@@ -278,8 +316,14 @@ public partial class TextVisualizerDialog : ComponentBase, IAsyncDisposable
 
     public record StringLogLine(int LineNumber, string Content, bool IsFormatted);
 
-    public static async Task OpenDialogAsync(ViewportInformation viewportInformation, IDialogService dialogService,
-        IStringLocalizer<Resources.Dialogs> dialogsLoc, string valueDescription, string value, bool containsSecret)
+    public static async Task OpenDialogAsync(
+        ViewportInformation viewportInformation,
+        IDialogService dialogService,
+        IStringLocalizer<Resources.Dialogs> dialogsLoc,
+        string valueDescription,
+        string value,
+        bool containsSecret
+    )
     {
         var width = viewportInformation.IsDesktop ? "75vw" : "100vw";
         var parameters = new DialogParameters
@@ -293,15 +337,19 @@ public partial class TextVisualizerDialog : ComponentBase, IAsyncDisposable
         };
 
         await dialogService.ShowDialogAsync<TextVisualizerDialog>(
-            new TextVisualizerDialogViewModel(value, valueDescription, containsSecret), parameters);
+            new TextVisualizerDialogViewModel(value, valueDescription, containsSecret),
+            parameters
+        );
     }
 
     internal sealed record TextVisualizerDialogSettings(bool SecretsWarningAcknowledged);
 
     private async Task UnmaskContentAsync()
     {
-        await LocalStorage.SetUnprotectedAsync(BrowserStorageKeys.TextVisualizerDialogSettings, new TextVisualizerDialogSettings(SecretsWarningAcknowledged: true));
+        await LocalStorage.SetUnprotectedAsync(
+            BrowserStorageKeys.TextVisualizerDialogSettings,
+            new TextVisualizerDialogSettings(SecretsWarningAcknowledged: true)
+        );
         ShowSecretsWarning = false;
     }
 }
-
